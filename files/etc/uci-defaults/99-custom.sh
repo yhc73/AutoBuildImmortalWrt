@@ -6,10 +6,6 @@ echo "Starting 99-custom.sh at $(date)" >> $LOGFILE
 # 设置默认防火墙规则，方便虚拟机首次访问 WebUI
 uci set firewall.@zone[1].input='ACCEPT'
 
-# 设置主机名映射，解决安卓原生 TV 无法联网的问题
-uci add dhcp domain
-uci set "dhcp.@domain[-1].name=time.android.com"
-uci set "dhcp.@domain[-1].ip=203.107.6.88"
 
 # 检查配置文件pppoe-settings是否存在 该文件由build.sh动态生成
 SETTINGS_FILE="/etc/config/pppoe-settings"
@@ -34,45 +30,6 @@ done
 # 删除多余空格
 ifnames=$(echo "$ifnames" | awk '{$1=$1};1')
 
-# 网络设置
-if [ "$count" -eq 1 ]; then
-   # 单网口设备 类似于NAS模式 动态获取ip模式 具体ip地址取决于上一级路由器给它分配的ip 也方便后续你使用web页面设置旁路由
-   # 单网口设备 不支持修改ip 不要在此处修改ip 
-   uci set network.lan.proto='dhcp'
-elif [ "$count" -gt 1 ]; then
-   # 提取第一个接口作为WAN
-   wan_ifname=$(echo "$ifnames" | awk '{print $1}')
-   # 剩余接口保留给LAN
-   lan_ifnames=$(echo "$ifnames" | cut -d ' ' -f2-)
-   # 设置WAN接口基础配置
-   uci set network.wan=interface
-   # 提取第一个接口作为WAN
-   uci set network.wan.device="$wan_ifname"
-   # WAN接口默认DHCP
-   uci set network.wan.proto='dhcp'
-   # 设置WAN6绑定网口eth0
-   uci set network.wan6=interface
-   uci set network.wan6.device="$wan_ifname"
-   # 更新LAN接口成员
-   # 查找对应设备的section名称
-   section=$(uci show network | awk -F '[.=]' '/\.@?device\[\d+\]\.name=.br-lan.$/ {print $2; exit}')
-   if [ -z "$section" ]; then
-      echo "error：cannot find device 'br-lan'." >> $LOGFILE
-   else
-      # 删除原来的ports列表
-      uci -q delete "network.$section.ports"
-      # 添加新的ports列表
-      for port in $lan_ifnames; do
-         uci add_list "network.$section.ports"="$port"
-      done
-      echo "ports of device 'br-lan' are update." >> $LOGFILE
-   fi
-   # LAN口设置静态IP
-   uci set network.lan.proto='static'
-   # 多网口设备 支持修改为别的ip地址
-   uci set network.lan.ipaddr='192.168.100.1'
-   uci set network.lan.netmask='255.255.255.0'
-   echo "set 192.168.100.1 at $(date)" >> $LOGFILE
    # 判断是否启用 PPPoE
    echo "print enable_pppoe value=== $enable_pppoe" >> $LOGFILE
    if [ "$enable_pppoe" = "yes" ]; then
